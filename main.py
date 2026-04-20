@@ -137,13 +137,21 @@ def main():
         elif choice == "创建新任务":
             title = questionary.text("任务名称:").ask()
             url = questionary.text("目标 URL:").ask()
+            minute_str = questionary.text(
+                "执行分钟 (例如: * 或 */15 或 0,30):",
+                default="*"
+            ).ask()
+
             if title and url:
                 try:
-                    job_id = client.create_job(title, url)
+                    minutes = client.parse_cron_list(minute_str, 59)
+                    job_id = client.create_job(title, url, minutes=minutes)
                     print(f"\n🎉 成功创建任务！ID: {job_id}")
+                    print(f"⏰ 设定分钟: {minutes}")
                 except Exception as e:
                     print(f"\n❌ 创建失败: {e}")
                 questionary.press_any_key_to_continue().ask()
+
 
         elif choice == "退出" or choice is None:
             print("\n再见！")
@@ -155,9 +163,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         clear_screen()
         print("\n已退出。")
-
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n退出。")

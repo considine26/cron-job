@@ -66,14 +66,44 @@ class CronJobClient:
         data = self._request("GET", f"/jobs/{job_id}")
         return CronJob(self, data.get("job", {}))
 
-    def create_job(self, title, url, enabled=True, schedule=None):
-        """创建新任务"""
-        if not schedule:
-            schedule = {
-                "timezone": "Europe/Berlin",
-                "hours": [-1], "mdays": [-1], "minutes": [-1],
-                "months": [-1], "wdays": [-1]
-            }
+    @staticmethod
+    def parse_cron_list(cron_str, max_val):
+        """
+        将简单的 cron 字符串解析为列表
+        '*' -> [-1]
+        '*/5' -> [0, 5, 10, ...]
+        '1,2,3' -> [1, 2, 3]
+        '0-5' -> [0, 1, 2, 3, 4, 5]
+        """
+        if cron_str == "*":
+            return [-1]
+        
+        if cron_str.startswith("*/"):
+            step = int(cron_str.split("/")[1])
+            return list(range(0, max_val + 1, step))
+        
+        if "," in cron_str:
+            return [int(x.strip()) for x in cron_str.split(",")]
+        
+        if "-" in cron_str:
+            start, end = map(int, cron_str.split("-"))
+            return list(range(start, end + 1))
+        
+        try:
+            return [int(cron_str)]
+        except ValueError:
+            return [-1]
+
+    def create_job(self, title, url, enabled=True, minutes=None):
+        """创建新任务，支持自定义分钟"""
+        schedule = {
+            "timezone": "Asia/Shanghai",  # 默认改为北京时间
+            "hours": [-1],
+            "mdays": [-1],
+            "minutes": minutes if minutes else [-1],
+            "months": [-1],
+            "wdays": [-1]
+        }
         payload = {
             "job": {
                 "title": title,
