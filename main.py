@@ -29,10 +29,10 @@ def format_stats(stats):
 
 def manage_job(client, job_id):
     while True:
-        # 每次循环开始都重新获取最新详情，防止数据过时
+        # 每次循环开始都重新获取最新详情
         job = client.get_job(job_id)
         if not job:
-            print("\n❌ 无法获取任务详情，可能已被删除。")
+            print("\n❌ 无法获取任务详情。")
             questionary.press_any_key_to_continue().ask()
             break
 
@@ -81,14 +81,15 @@ def manage_job(client, job_id):
             questionary.press_any_key_to_continue().ask()
 
         elif action == "修改基本信息 (标题/URL)":
-            new_title = questionary.text("新标题:", default=job.title).ask()
-            new_url = questionary.text("新URL:", default=job.url).ask()
-            if job.update(title=new_title, url=new_url):
-                print("\n✅ 基本信息更新成功！")
+            # 增加安全默认值，防止 NoneType 错误
+            new_title = questionary.text("新标题:", default=str(job.title or "")).ask()
+            new_url = questionary.text("新URL:", default=str(job.url or "")).ask()
+            if new_title and new_url:
+                if job.update(title=new_title, url=new_url):
+                    print("\n✅ 基本信息更新成功！")
             questionary.press_any_key_to_continue().ask()
 
         elif action == "修改 Cron 表达式":
-            # 获取当前的 Cron 字符串作为默认值
             current_cron = job.client.to_cron_str(job.schedule)
             new_cron_str = questionary.text(
                 f"新 Cron 表达式 (当前: {current_cron}):",
