@@ -40,13 +40,15 @@ def manage_job(job):
             choices=[
                 "查看历史详情 (HistoryItemStats)",
                 "切换 启用/禁用",
-                "修改基本信息",
+                "修改基本信息 (标题/URL)",
+                "修改 Cron 表达式",
                 "删除任务",
                 "返回主菜单"
             ]
         ).ask()
 
         if action == "查看历史详情 (HistoryItemStats)":
+            # ... (保持不变)
             history = job.get_history()
             if not history:
                 print("\n暂无执行历史。")
@@ -73,13 +75,26 @@ def manage_job(job):
                 print(f"\n✅ 已切换为: {'开启' if new_status else '关闭'}")
             questionary.press_any_key_to_continue().ask()
 
-        elif action == "修改基本信息":
+        elif action == "修改基本信息 (标题/URL)":
             new_title = questionary.text("新标题:", default=job.title).ask()
             new_url = questionary.text("新URL:", default=job.url).ask()
-            if new_title and new_url:
-                if job.update(title=new_title, url=new_url):
-                    job.title, job.url = new_title, new_url
-                    print("\n✅ 更新成功！")
+            if job.update(title=new_title, url=new_url):
+                job.title, job.url = new_title, new_url
+                print("\n✅ 基本信息更新成功！")
+            questionary.press_any_key_to_continue().ask()
+
+        elif action == "修改 Cron 表达式":
+            new_cron_str = questionary.text(
+                "新 Cron 表达式 (分 时 日 月 周):",
+                default="* * * * *"
+            ).ask()
+            try:
+                new_schedule = client.parse_standard_cron(new_cron_str)
+                if job.update(schedule=new_schedule):
+                    print(f"\n✅ Cron 表达式更新成功！")
+                    print(f"⏰ 新调度: {new_cron_str}")
+            except Exception as e:
+                print(f"\n❌ 修改失败: {e}")
             questionary.press_any_key_to_continue().ask()
 
         elif action == "删除任务":

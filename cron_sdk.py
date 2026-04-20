@@ -25,6 +25,7 @@ class CronJob:
         self.url = data.get("url")
         self.enabled = data.get("enabled")
         self.folder_id = data.get("folderId")
+        self.schedule = data.get("schedule", {})
 
     def update(self, **kwargs):
         """更新任务属性"""
@@ -115,16 +116,6 @@ class CronJobClient:
         else:
             schedule["timezone"] = "Asia/Shanghai"
 
-        payload = {
-            "job": {
-                "title": title,
-                "url": url,
-                "enabled": enabled,
-                "schedule": schedule
-            }
-        }
-        data = self._request("PUT", "/jobs", json=payload)
-        return data.get("jobId")
         payload = {
             "job": {
                 "title": title,
