@@ -8,8 +8,68 @@ from scripts.cron_sdk import CronJobClient
 # 加载环境变量
 load_dotenv()
 
-# 使用新的环境变量名
-TOKEN = os.getenv("CRON_ORG_TOKEN")
+# 加载环境变量 (不推荐使用 load_dotenv 处理这类结构)
+
+def get_accounts():
+    """从 .env 文件手动解析块状结构的账号信息"""
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    accounts = []
+    current_account = {}
+    
+    if not os.path.exists(env_path):
+        return []
+        
+    try:
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    
+                    # 遇到 USER 且当前已有数据，说明新的一块开始了
+                    if key == "USER" and current_account:
+                        accounts.append(current_account)
+                        current_account = {}
+                    
+                    current_account[key] = value
+            if current_account:
+                accounts.append(current_account)
+    except Exception as e:
+        print(f"解析 .env 失败: {e}")
+        
+    return accounts
+
+def select_account(accounts):
+    """选择要使用的账号"""
+    if not accounts:
+        print("错误: .env 文件为空或格式不正确。请确保包含 USER, MAIL, CRON_ORG_TOKEN。")
+        sys.exit(1)
+        
+    if len(accounts) == 1:
+        acc = accounts[0]
+        return acc.get("USER", "未命名"), acc.get("CRON_ORG_TOKEN"), acc.get("MAIL", "")
+        
+    choices = [
+        questionary.Choice(
+            title=f"{acc.get('USER')} ({acc.get('MAIL')})",
+            value=acc
+        ) for acc in accounts
+    ]
+    choices.append(questionary.Choice(title="退出脚本", value="EXIT"))
+    
+    selected = questionary.select(
+        "请选择要管理的账号:",
+        choices=choices
+    ).ask()
+    
+    if selected == "EXIT" or selected is None:
+        sys.exit(0)
+        
+    return selected.get("USER", "未命名"), selected.get("CRON_ORG_TOKEN"), selected.get("MAIL", "")
 
 def clear_screen():
     """跨平台清屏"""
@@ -125,22 +185,23 @@ def manage_job(client, job_id):
             break
 
 def main():
-    if not TOKEN:
-        print("错误: 请在 .env 中设置 CRON_ORG_TOKEN")
-        sys.exit(1)
-
-    client = CronJobClient(TOKEN)
+    accounts = get_accounts()
+    current_account_name, current_token, current_mail = select_account(accounts)
+    
+    client = CronJobClient(current_token, user_id=current_account_name)
     
     while True:
         clear_screen()
         usage = client.get_usage_count()
-        print(f"=== Cron-Job.org 管理面板 ===")
+        print(f"=== Cron-Job.org 管理面板 [{current_account_name}] ===")
+        print(f"账号邮箱: {current_mail}")
         print(f"当日API调用: {usage}/100")
         choice = questionary.select(
             "主菜单:",
             choices=[
                 "任务列表",
                 "新建任务",
+                "切换账号",
                 "退出脚本"
             ]
         ).ask()
@@ -190,6 +251,12 @@ def main():
                 except Exception as e:
                     print(f"\n❌ 创建或解析失败: {e}")
                 questionary.press_any_key_to_continue().ask()
+
+        elif choice == "切换账号":
+            current_account_name, current_token, current_mail = select_account(accounts)
+            client = CronJobClient(current_token, user_id=current_account_name)
+            print(f"\n✅ 已切换到账号: {current_account_name}")
+            time.sleep(1)
 
         elif choice == "退出脚本" or choice is None:
             print("\n再见！")

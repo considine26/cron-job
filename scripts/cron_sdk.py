@@ -54,8 +54,9 @@ class CronJobClient:
     USAGE_FILE = os.path.join(os.path.dirname(__file__), "api_usage.json")
     LIMIT = 100
 
-    def __init__(self, token):
+    def __init__(self, token, user_id="default"):
         self.token = token
+        self.user_id = user_id
         self.headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
@@ -63,23 +64,39 @@ class CronJobClient:
 
     def _check_and_increment_usage(self):
         today = datetime.now().strftime("%Y-%m-%d")
-        usage = {"date": today, "count": 0}
         
+        data = {}
         if os.path.exists(self.USAGE_FILE):
             try:
                 with open(self.USAGE_FILE, "r") as f:
-                    data = json.load(f)
-                    if data.get("date") == today:
-                        usage = data
+                    content = json.load(f)
+                    if isinstance(content, dict):
+                        # 检查是否是旧格式 {"date": "...", "count": 0}
+                        if "count" in content and "date" in content and not isinstance(content.get("count"), dict):
+                            data = {"default": content}
+                        else:
+                            data = content
             except:
                 pass
 
-        if usage["count"] >= self.LIMIT:
-            raise Exception(f"每日 API 调用已达上限 ({self.LIMIT})，请明日再试。")
+        if not isinstance(data, dict):
+            data = {}
 
-        usage["count"] += 1
+        # 获取并初始化当前用户的统计
+        user_stats = data.get(self.user_id)
+        if not isinstance(user_stats, dict) or user_stats.get("date") != today:
+            user_stats = {"date": today, "count": 0}
+
+        current_count = int(user_stats.get("count", 0))
+        if current_count >= self.LIMIT:
+            raise Exception(f"用户 [{self.user_id}] 每日 API 调用已达上限 ({self.LIMIT})，请明日再试。")
+
+        user_stats["count"] = current_count + 1
+        user_stats["date"] = today
+        data[self.user_id] = user_stats
+
         with open(self.USAGE_FILE, "w") as f:
-            json.dump(usage, f)
+            json.dump(data, f, indent=2)
 
     def get_usage_count(self):
         today = datetime.now().strftime("%Y-%m-%d")
@@ -87,8 +104,18 @@ class CronJobClient:
             try:
                 with open(self.USAGE_FILE, "r") as f:
                     data = json.load(f)
-                    if data.get("date") == today:
-                        return data.get("count", 0)
+                    if not isinstance(data, dict):
+                        return 0
+                    
+                    # 兼容旧格式
+                    if "count" in data and "date" in data and self.user_id == "default":
+                        if data.get("date") == today:
+                            return int(data.get("count", 0))
+                        return 0
+
+                    user_stats = data.get(self.user_id)
+                    if isinstance(user_stats, dict) and user_stats.get("date") == today:
+                        return int(user_stats.get("count", 0))
             except:
                 pass
         return 0
