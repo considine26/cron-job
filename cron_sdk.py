@@ -62,17 +62,18 @@ class CronJobClient:
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
-            # 核心防御：如果是删除操作且报 404，说明目的已达到，忽略错误
             if method == "DELETE" and response.status_code == 404:
-                return {"success": True}
-            raise e # 其他错误继续抛出
+                return True
+            raise e
 
         if response.content:
             try:
-                return response.json()
+                data = response.json()
+                # 如果返回的是空字典，也视为 True
+                return data if data else True
             except:
-                return {"success": True}
-        return {"success": True}
+                return True
+        return True
 
     def get_jobs(self):
         data = self._request("GET", "/jobs")

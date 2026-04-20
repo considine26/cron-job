@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import questionary
 from dotenv import load_dotenv
 from cron_sdk import CronJobClient
@@ -29,18 +30,30 @@ def format_stats(stats):
 
 def manage_job(client, job_id):
     while True:
-        # 每次循环开始都重新获取最新详情
-        job = client.get_job(job_id)
-        if not job:
-            print("\n❌ 无法获取任务详情。")
+        try:
+            time.sleep(0.3) # 防抖
+            job = client.get_job(job_id)
+            if not job:
+                print("\n❌ 无法获取任务详情。")
+                questionary.press_any_key_to_continue().ask()
+                break
+        except Exception as e:
+            if "429" in str(e):
+                print("\n⚠️ 请求太频繁 (429)，正在自动重试...")
+                time.sleep(5)
+                continue
+            print(f"\n❌ 操作失败: {e}")
             questionary.press_any_key_to_continue().ask()
             break
 
         clear_screen()
         status_icon = "🟢" if job.enabled else "🔴"
+        current_cron = client.to_cron_str(job.schedule)
+        
         print(f"=== 任务管理: {job.title} ===")
         print(f"状态: {status_icon} | ID: {job.job_id}")
-        print(f"URL:  {job.url}\n")
+        print(f"URL:  {job.url}")
+        print(f"调度: {current_cron}\n")
         
         action = questionary.select(
             "选择操作:",
@@ -81,7 +94,6 @@ def manage_job(client, job_id):
             questionary.press_any_key_to_continue().ask()
 
         elif action == "修改基本信息 (标题/URL)":
-            # 增加安全默认值，防止 NoneType 错误
             new_title = questionary.text("新标题:", default=str(job.title or "")).ask()
             new_url = questionary.text("新URL:", default=str(job.url or "")).ask()
             if new_title and new_url:
@@ -90,16 +102,14 @@ def manage_job(client, job_id):
             questionary.press_any_key_to_continue().ask()
 
         elif action == "修改 Cron 表达式":
-            current_cron = job.client.to_cron_str(job.schedule)
             new_cron_str = questionary.text(
-                f"新 Cron 表达式 (当前: {current_cron}):",
+                "输入新 Cron 表达式 (分 时 日 月 周):",
                 default=current_cron
             ).ask()
             try:
                 new_schedule = job.client.parse_standard_cron(new_cron_str)
                 if job.update(schedule=new_schedule):
                     print(f"\n✅ Cron 表达式更新成功！")
-                    print(f"⏰ 新调度: {new_cron_str}")
             except Exception as e:
                 print(f"\n❌ 修改失败: {e}")
             questionary.press_any_key_to_continue().ask()
@@ -135,6 +145,7 @@ def main():
 
         if choice == "列出所有任务":
             try:
+                time.sleep(0.3)
                 jobs = client.get_jobs()
                 if not jobs:
                     print("\n账户下没有任务。")
@@ -153,7 +164,11 @@ def main():
                 if selected_job_id and selected_job_id != "返回":
                     manage_job(client, selected_job_id)
             except Exception as e:
-                print(f"\n❌ 操作失败: {e}")
+                if "429" in str(e):
+                    print("\n⚠️ 请求太频繁，请稍等...")
+                    time.sleep(5)
+                else:
+                    print(f"\n❌ 操作失败: {e}")
                 questionary.press_any_key_to_continue().ask()
 
         elif choice == "创建新任务":
