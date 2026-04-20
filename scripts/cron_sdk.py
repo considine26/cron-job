@@ -1,6 +1,10 @@
 import requests
+import json
+import os
+from datetime import datetime
 
 class JobStats:
+# ... (rest of the file classes)
     def __init__(self, data):
         self.name_lookup = data.get("nameLookup", 0)
         self.connect = data.get("connect", 0)
@@ -47,6 +51,8 @@ class CronJob:
 
 class CronJobClient:
     BASE_URL = "https://api.cron-job.org"
+    USAGE_FILE = os.path.join(os.path.dirname(__file__), "api_usage.json")
+    LIMIT = 100
 
     def __init__(self, token):
         self.token = token
@@ -55,7 +61,40 @@ class CronJobClient:
             "Content-Type": "application/json"
         }
 
+    def _check_and_increment_usage(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        usage = {"date": today, "count": 0}
+        
+        if os.path.exists(self.USAGE_FILE):
+            try:
+                with open(self.USAGE_FILE, "r") as f:
+                    data = json.load(f)
+                    if data.get("date") == today:
+                        usage = data
+            except:
+                pass
+
+        if usage["count"] >= self.LIMIT:
+            raise Exception(f"每日 API 调用已达上限 ({self.LIMIT})，请明日再试。")
+
+        usage["count"] += 1
+        with open(self.USAGE_FILE, "w") as f:
+            json.dump(usage, f)
+
+    def get_usage_count(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        if os.path.exists(self.USAGE_FILE):
+            try:
+                with open(self.USAGE_FILE, "r") as f:
+                    data = json.load(f)
+                    if data.get("date") == today:
+                        return data.get("count", 0)
+            except:
+                pass
+        return 0
+
     def _request(self, method, endpoint, json=None):
+        self._check_and_increment_usage()
         url = f"{self.BASE_URL}{endpoint}"
         response = requests.request(method, url, headers=self.headers, json=json)
         

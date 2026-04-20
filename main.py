@@ -3,7 +3,7 @@ import sys
 import time
 import questionary
 from dotenv import load_dotenv
-from cron_sdk import CronJobClient
+from scripts.cron_sdk import CronJobClient
 
 # 加载环境变量
 load_dotenv()
@@ -40,7 +40,7 @@ def manage_job(client, job_id):
         except Exception as e:
             if "429" in str(e):
                 print("\n⚠️ 请求太频繁 (429)，正在自动重试...")
-                time.sleep(5)
+                time.sleep(2)
                 continue
             print(f"\n❌ 操作失败: {e}")
             questionary.press_any_key_to_continue().ask()
@@ -58,16 +58,16 @@ def manage_job(client, job_id):
         action = questionary.select(
             "选择操作:",
             choices=[
-                "查看历史详情 (HistoryItemStats)",
-                "切换 启用/禁用",
-                "修改基本信息 (标题/URL)",
-                "修改 Cron 表达式",
+                "调度历史 (HistoryItemStats)",
+                "切换状态 (启用/禁用)",
+                "修改信息 (标题/URL)",
+                "修改调度 (Cron表达式)",
                 "删除任务",
-                "返回主菜单"
+                "返回菜单"
             ]
         ).ask()
 
-        if action == "查看历史详情 (HistoryItemStats)":
+        if action == "调度历史 (HistoryItemStats)":
             history = job.get_history()
             if not history:
                 print("\n暂无执行历史。")
@@ -87,13 +87,13 @@ def manage_job(client, job_id):
                 print(format_stats(selected_h.stats))
                 questionary.press_any_key_to_continue().ask()
 
-        elif action == "切换 启用/禁用":
+        elif action == "切换状态 (启用/禁用)":
             new_status = not job.enabled
             if job.update(enabled=new_status):
                 print(f"\n✅ 已切换为: {'开启' if new_status else '关闭'}")
             questionary.press_any_key_to_continue().ask()
 
-        elif action == "修改基本信息 (标题/URL)":
+        elif action == "修改信息 (标题/URL)":
             new_title = questionary.text("新标题:", default=str(job.title or "")).ask()
             new_url = questionary.text("新URL:", default=str(job.url or "")).ask()
             if new_title and new_url:
@@ -101,7 +101,7 @@ def manage_job(client, job_id):
                     print("\n✅ 基本信息更新成功！")
             questionary.press_any_key_to_continue().ask()
 
-        elif action == "修改 Cron 表达式":
+        elif action == "修改调度 (Cron表达式)":
             new_cron_str = questionary.text(
                 "输入新 Cron 表达式 (分 时 日 月 周):",
                 default=current_cron
@@ -121,7 +121,7 @@ def manage_job(client, job_id):
                     questionary.press_any_key_to_continue().ask()
                     break
 
-        elif action == "返回主菜单" or action is None:
+        elif action == "返回菜单" or action is None:
             break
 
 def main():
@@ -133,17 +133,19 @@ def main():
     
     while True:
         clear_screen()
-        print("=== Cron-Job.org 管理面板 (Local SDK) ===")
+        usage = client.get_usage_count()
+        print(f"=== Cron-Job.org 管理面板 ===")
+        print(f"当日API调用: {usage}/100")
         choice = questionary.select(
             "主菜单:",
             choices=[
-                "列出所有任务",
-                "创建新任务",
-                "退出"
+                "任务列表",
+                "新建任务",
+                "退出脚本"
             ]
         ).ask()
 
-        if choice == "列出所有任务":
+        if choice == "任务列表":
             try:
                 time.sleep(0.3)
                 jobs = client.get_jobs()
@@ -154,7 +156,7 @@ def main():
                 
                 job_choices = [
                     questionary.Choice(
-                        title=f"{'🟢' if j.enabled else '🔴'} {j.title} ({j.url})",
+                        title=f"{'🟢' if j.enabled else '🔴'} {j.title} ({j.url}) [{client.to_cron_str(j.schedule)}]",
                         value=j.job_id
                     ) for j in jobs
                 ]
@@ -166,17 +168,17 @@ def main():
             except Exception as e:
                 if "429" in str(e):
                     print("\n⚠️ 请求太频繁，请稍等...")
-                    time.sleep(5)
+                    time.sleep(2)
                 else:
                     print(f"\n❌ 操作失败: {e}")
                 questionary.press_any_key_to_continue().ask()
 
-        elif choice == "创建新任务":
+        elif choice == "新建任务":
             title = questionary.text("任务名称:").ask()
-            url = questionary.text("目标 URL:").ask()
+            url = questionary.text("目标URL:").ask()
             cron_str = questionary.text(
-                "Cron 表达式 (分 时 日 月 周, 例如: */15 * * * *):",
-                default="* * * * *"
+                "Cron表达式 (分 时 日 月 周):",
+                default="*/15 * * * *"
             ).ask()
 
             if title and url:
@@ -189,7 +191,7 @@ def main():
                     print(f"\n❌ 创建或解析失败: {e}")
                 questionary.press_any_key_to_continue().ask()
 
-        elif choice == "退出" or choice is None:
+        elif choice == "退出脚本" or choice is None:
             print("\n再见！")
             break
 
