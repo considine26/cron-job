@@ -89,7 +89,8 @@ def manage_job(job):
                 default="* * * * *"
             ).ask()
             try:
-                new_schedule = client.parse_standard_cron(new_cron_str)
+                # 使用 job 内部持有的 client 引用
+                new_schedule = job.client.parse_standard_cron(new_cron_str)
                 if job.update(schedule=new_schedule):
                     print(f"\n✅ Cron 表达式更新成功！")
                     print(f"⏰ 新调度: {new_cron_str}")
