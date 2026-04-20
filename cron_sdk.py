@@ -64,7 +64,12 @@ class CronJobClient:
         url = f"{self.BASE_URL}{endpoint}"
         response = requests.request(method, url, headers=self.headers, json=json)
         response.raise_for_status()
-        return response.json() if response.content else {}
+        if response.content:
+            try:
+                return response.json()
+            except:
+                return True
+        return True
 
     def get_jobs(self):
         """GET /jobs -> 返回 {'jobs': [...]}"""
