@@ -67,43 +67,64 @@ class CronJobClient:
         return CronJob(self, data.get("job", {}))
 
     @staticmethod
-    def parse_cron_list(cron_str, max_val):
-        """
-        将简单的 cron 字符串解析为列表
-        '*' -> [-1]
-        '*/5' -> [0, 5, 10, ...]
-        '1,2,3' -> [1, 2, 3]
-        '0-5' -> [0, 1, 2, 3, 4, 5]
-        """
-        if cron_str == "*":
+    def _parse_part(cron_part, max_val, min_val=0):
+        """解析 cron 的单个部分 (支持 *, */n, a-b, a,b)"""
+        if cron_part == "*":
             return [-1]
         
-        if cron_str.startswith("*/"):
-            step = int(cron_str.split("/")[1])
-            return list(range(0, max_val + 1, step))
+        # 处理 1,2,3
+        if "," in cron_part:
+            return sorted(list(set(int(x.strip()) for x in cron_part.split(","))))
         
-        if "," in cron_str:
-            return [int(x.strip()) for x in cron_str.split(",")]
+        # 处理 */5
+        if cron_part.startswith("*/"):
+            step = int(cron_part.split("/")[1])
+            return list(range(min_val, max_val + 1, step))
         
-        if "-" in cron_str:
-            start, end = map(int, cron_str.split("-"))
+        # 处理 0-5
+        if "-" in cron_part:
+            start, end = map(int, cron_part.split("-"))
             return list(range(start, end + 1))
         
-        try:
-            return [int(cron_str)]
-        except ValueError:
-            return [-1]
+        # 单个数字
+        return [int(cron_part)]
 
-    def create_job(self, title, url, enabled=True, minutes=None):
-        """创建新任务，支持自定义分钟"""
-        schedule = {
-            "timezone": "Asia/Shanghai",  # 默认改为北京时间
-            "hours": [-1],
-            "mdays": [-1],
-            "minutes": minutes if minutes else [-1],
-            "months": [-1],
-            "wdays": [-1]
+    @classmethod
+    def parse_standard_cron(cls, cron_str):
+        """解析标准 5 位 Cron 表达式"""
+        parts = cron_str.split()
+        if len(parts) != 5:
+            raise ValueError("Cron 表达式必须包含 5 个部分: 分 时 日 月 周")
+        
+        return {
+            "minutes": cls._parse_part(parts[0], 59),
+            "hours":   cls._parse_part(parts[1], 23),
+            "mdays":   cls._parse_part(parts[2], 31, 1),
+            "months":  cls._parse_part(parts[3], 12, 1),
+            "wdays":   cls._parse_part(parts[4], 6, 0)
         }
+
+    def create_job(self, title, url, enabled=True, schedule=None):
+        """创建新任务，支持完整调度"""
+        if not schedule:
+            schedule = {
+                "timezone": "Asia/Shanghai",
+                "hours": [-1], "mdays": [-1], "minutes": [-1],
+                "months": [-1], "wdays": [-1]
+            }
+        else:
+            schedule["timezone"] = "Asia/Shanghai"
+
+        payload = {
+            "job": {
+                "title": title,
+                "url": url,
+                "enabled": enabled,
+                "schedule": schedule
+            }
+        }
+        data = self._request("PUT", "/jobs", json=payload)
+        return data.get("jobId")
         payload = {
             "job": {
                 "title": title,

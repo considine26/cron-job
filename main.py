@@ -137,21 +137,20 @@ def main():
         elif choice == "创建新任务":
             title = questionary.text("任务名称:").ask()
             url = questionary.text("目标 URL:").ask()
-            minute_str = questionary.text(
-                "执行分钟 (例如: * 或 */15 或 0,30):",
-                default="*"
+            cron_str = questionary.text(
+                "Cron 表达式 (分 时 日 月 周, 例如: */15 * * * *):",
+                default="* * * * *"
             ).ask()
 
             if title and url:
                 try:
-                    minutes = client.parse_cron_list(minute_str, 59)
-                    job_id = client.create_job(title, url, minutes=minutes)
+                    schedule = client.parse_standard_cron(cron_str)
+                    job_id = client.create_job(title, url, schedule=schedule)
                     print(f"\n🎉 成功创建任务！ID: {job_id}")
-                    print(f"⏰ 设定分钟: {minutes}")
+                    print(f"⏰ 调度配置: {cron_str}")
                 except Exception as e:
-                    print(f"\n❌ 创建失败: {e}")
+                    print(f"\n❌ 创建或解析失败: {e}")
                 questionary.press_any_key_to_continue().ask()
-
 
         elif choice == "退出" or choice is None:
             print("\n再见！")
