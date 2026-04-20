@@ -27,8 +27,15 @@ def format_stats(stats):
         f"----------------------------------"
     )
 
-def manage_job(job):
+def manage_job(client, job_id):
     while True:
+        # 每次循环开始都重新获取最新详情，防止数据过时
+        job = client.get_job(job_id)
+        if not job:
+            print("\n❌ 无法获取任务详情，可能已被删除。")
+            questionary.press_any_key_to_continue().ask()
+            break
+
         clear_screen()
         status_icon = "🟢" if job.enabled else "🔴"
         print(f"=== 任务管理: {job.title} ===")
@@ -48,7 +55,6 @@ def manage_job(job):
         ).ask()
 
         if action == "查看历史详情 (HistoryItemStats)":
-            # ... (保持不变)
             history = job.get_history()
             if not history:
                 print("\n暂无执行历史。")
@@ -71,7 +77,6 @@ def manage_job(job):
         elif action == "切换 启用/禁用":
             new_status = not job.enabled
             if job.update(enabled=new_status):
-                job.enabled = new_status
                 print(f"\n✅ 已切换为: {'开启' if new_status else '关闭'}")
             questionary.press_any_key_to_continue().ask()
 
@@ -79,17 +84,17 @@ def manage_job(job):
             new_title = questionary.text("新标题:", default=job.title).ask()
             new_url = questionary.text("新URL:", default=job.url).ask()
             if job.update(title=new_title, url=new_url):
-                job.title, job.url = new_title, new_url
                 print("\n✅ 基本信息更新成功！")
             questionary.press_any_key_to_continue().ask()
 
         elif action == "修改 Cron 表达式":
+            # 获取当前的 Cron 字符串作为默认值
+            current_cron = job.client.to_cron_str(job.schedule)
             new_cron_str = questionary.text(
-                "新 Cron 表达式 (分 时 日 月 周):",
-                default="* * * * *"
+                f"新 Cron 表达式 (当前: {current_cron}):",
+                default=current_cron
             ).ask()
             try:
-                # 使用 job 内部持有的 client 引用
                 new_schedule = job.client.parse_standard_cron(new_cron_str)
                 if job.update(schedule=new_schedule):
                     print(f"\n✅ Cron 表达式更新成功！")
@@ -138,14 +143,14 @@ def main():
                 job_choices = [
                     questionary.Choice(
                         title=f"{'🟢' if j.enabled else '🔴'} {j.title} ({j.url})",
-                        value=j
+                        value=j.job_id
                     ) for j in jobs
                 ]
                 job_choices.append("返回")
-                selected_job = questionary.select("选择要管理的任务:", choices=job_choices).ask()
+                selected_job_id = questionary.select("选择要管理的任务:", choices=job_choices).ask()
                 
-                if selected_job and selected_job != "返回":
-                    manage_job(selected_job)
+                if selected_job_id and selected_job_id != "返回":
+                    manage_job(client, selected_job_id)
             except Exception as e:
                 print(f"\n❌ 操作失败: {e}")
                 questionary.press_any_key_to_continue().ask()

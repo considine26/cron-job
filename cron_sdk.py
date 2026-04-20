@@ -105,6 +105,29 @@ class CronJobClient:
             "wdays":   cls._parse_part(parts[4], 6, 0)
         }
 
+    @staticmethod
+    def to_cron_str(schedule):
+        """将 API 的 schedule 字典转回 5 位 Cron 字符串"""
+        if not schedule:
+            return "* * * * *"
+        
+        def _part_to_str(part_list, max_val):
+            if not part_list or part_list == [-1]:
+                return "*"
+            # 如果是连续的完整范围
+            if len(part_list) > 1 and part_list == list(range(min(part_list), max(part_list) + 1)):
+                if len(part_list) == max_val + 1: return "*"
+                return f"{min(part_list)}-{max(part_list)}"
+            return ",".join(map(str, sorted(part_list)))
+
+        return " ".join([
+            _part_to_str(schedule.get("minutes"), 59),
+            _part_to_str(schedule.get("hours"), 23),
+            _part_to_str(schedule.get("mdays"), 31),
+            _part_to_str(schedule.get("months"), 12),
+            _part_to_str(schedule.get("wdays"), 6)
+        ])
+
     def create_job(self, title, url, enabled=True, schedule=None):
         """创建新任务，支持完整调度"""
         if not schedule:
