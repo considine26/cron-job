@@ -2,6 +2,7 @@ import requests
 
 class JobStats:
     def __init__(self, data):
+        # 严格对应 HistoryItemStats 定义
         self.name_lookup = data.get("nameLookup", 0)
         self.connect = data.get("connect", 0)
         self.app_connect = data.get("appConnect", 0)
@@ -11,29 +12,34 @@ class JobStats:
 
 class HistoryItem:
     def __init__(self, data):
+        # 对应 HistoryItem 定义
         self.identifier = data.get("identifier")
         self.status = data.get("status")
         self.http_status = data.get("httpStatus")
         self.date = data.get("date")
+        self.duration = data.get("duration", 0)
+        # 处理嵌套的 stats
         self.stats = JobStats(data.get("stats", {}))
 
 class CronJob:
     def __init__(self, client, data):
         self.client = client
-        # 核心修复：API 详情返回 jobDetails，列表返回直接的对象，或者嵌套在 job 里
-        j = data
-        for key in ["jobDetails", "job"]:
-            if isinstance(data.get(key), dict):
-                j = data[key]
+        # 智能解包：文档中详情接口用 jobDetails，列表用直接对象
+        # 这里扫描所有可能的包装键，如果都没有，则使用数据本身
+        inner_data = data
+        for wrapper in ["jobDetails", "job"]:
+            if isinstance(data.get(wrapper), dict):
+                inner_data = data[wrapper]
                 break
         
-        # 映射字段
-        self.job_id = j.get("jobId") or j.get("job_id") or data.get("jobId") or 0
-        self.title = j.get("title") or data.get("title") or "未命名任务"
-        self.url = j.get("url") or data.get("url") or "无 URL"
-        self.enabled = j.get("enabled", data.get("enabled", False))
-        self.folder_id = j.get("folderId", data.get("folderId", 0))
-        self.schedule = j.get("schedule") or data.get("schedule", {})
+        # 映射属性 (严格对应 DetailedJob 类型定义)
+        self.job_id = inner_data.get("jobId") or data.get("jobId")
+        self.title = inner_data.get("title") or "未命名任务"
+        self.url = inner_data.get("url") or "无 URL"
+        self.enabled = inner_data.get("enabled", False)
+        self.folder_id = inner_data.get("folderId", 0)
+        self.schedule = inner_data.get("schedule", {})
+        self.save_responses = inner_data.get("saveResponses", False)
 
     def update(self, **kwargs):
         return self.client.update_job(self.job_id, kwargs)
@@ -58,18 +64,44 @@ class CronJobClient:
         url = f"{self.BASE_URL}{endpoint}"
         response = requests.request(method, url, headers=self.headers, json=json)
         response.raise_for_status()
-        if response.content:
-            return response.json()
-        return {}
+        return response.json() if response.content else {}
 
     def get_jobs(self):
+        """GET /jobs -> 返回 {'jobs': [...]}"""
         data = self._request("GET", "/jobs")
-        jobs_data = data.get("jobs", []) if isinstance(data, dict) else []
-        return [CronJob(self, j) for j in jobs_data]
+        return [CronJob(self, j) for j in data.get("jobs", [])]
 
     def get_job(self, job_id):
+        """GET /jobs/{jobId} -> 返回 {'jobDetails': {...}}"""
         data = self._request("GET", f"/jobs/{job_id}")
-        return CronJob(self, data if isinstance(data, dict) else {})
+        return CronJob(self, data)
+
+    def create_job(self, title, url, enabled=True, schedule=None):
+        """PUT /jobs -> 返回 {'jobId': 123}"""
+        if not schedule:
+            schedule = {"timezone": "Asia/Shanghai", "hours": [-1], "mdays": [-1], "minutes": [-1], "months": [-1], "wdays": [-1]}
+        payload = {"job": {"title": title, "url": url, "enabled": enabled, "schedule": schedule}}
+        data = self._request("PUT", "/jobs", json=payload)
+        return data.get("jobId")
+
+    def update_job(self, job_id, job_data):
+        """PATCH /jobs/{jobId}"""
+        return self._request("PATCH", f"/jobs/{job_id}", json={"job": job_data})
+
+    def delete_job(self, job_id):
+        """DELETE /jobs/{jobId}"""
+        return self._request("DELETE", f"/jobs/{job_id}")
+
+    def get_job_history(self, job_id):
+        """GET /jobs/{jobId}/history -> 返回 {'history': [...]}"""
+        data = self._request("GET", f"/jobs/{job_id}/history")
+        return [HistoryItem(h) for h in data.get("history", [])]
+
+    def get_history_detail(self, job_id, identifier):
+        """GET /jobs/{jobId}/history/{id} -> 返回 {'jobHistoryDetails': {...}}"""
+        data = self._request("GET", f"/jobs/{job_id}/history/{identifier}")
+        # 这里返回的是 jobHistoryDetails 包装的对象
+        return HistoryItem(data.get("jobHistoryDetails", {}))
 
     @staticmethod
     def _parse_part(cron_part, max_val, min_val=0):
@@ -111,20 +143,3 @@ class CronJobClient:
             _part_to_str(schedule.get("months"), 12),
             _part_to_str(schedule.get("wdays"), 6)
         ])
-
-    def create_job(self, title, url, enabled=True, schedule=None):
-        if not schedule:
-            schedule = {"timezone": "Asia/Shanghai", "hours": [-1], "mdays": [-1], "minutes": [-1], "months": [-1], "wdays": [-1]}
-        payload = {"job": {"title": title, "url": url, "enabled": enabled, "schedule": schedule}}
-        data = self._request("PUT", "/jobs", json=payload)
-        return data.get("jobId")
-
-    def update_job(self, job_id, job_data):
-        return self._request("PATCH", f"/jobs/{job_id}", json={"job": job_data})
-
-    def delete_job(self, job_id):
-        return self._request("DELETE", f"/jobs/{job_id}")
-
-    def get_job_history(self, job_id):
-        data = self._request("GET", f"/jobs/{job_id}/history")
-        return [HistoryItem(h) for h in data.get("history", [])]
