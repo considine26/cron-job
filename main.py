@@ -163,7 +163,7 @@ def manage_job(client, job_id):
 
         elif action == "修改调度 (Cron表达式)":
             new_cron_str = questionary.text(
-                "输入新 Cron 表达式 (分 时 日 月 周):",
+                "输入 Cron 表达式 (分 时 日 月 周):",
                 default=current_cron
             ).ask()
             try:
