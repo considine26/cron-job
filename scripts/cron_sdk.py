@@ -54,9 +54,10 @@ class CronJobClient:
     USAGE_FILE = os.path.join(os.path.dirname(__file__), "api_usage.json")
     LIMIT = 100
 
-    def __init__(self, token, user_id="default"):
+    def __init__(self, token, user_id="default", api_base_url=None):
         self.token = token
         self.user_id = user_id
+        self.base_url = api_base_url or self.BASE_URL
         self.headers = {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
@@ -122,7 +123,7 @@ class CronJobClient:
 
     def _request(self, method, endpoint, json=None):
         self._check_and_increment_usage()
-        url = f"{self.BASE_URL}{endpoint}"
+        url = f"{self.base_url}{endpoint}"
         response = requests.request(method, url, headers=self.headers, json=json)
         
         try:
